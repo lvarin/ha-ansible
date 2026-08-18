@@ -1,0 +1,8 @@
+#!/bin/bash
+STATE=$3
+FLOATING_IP_ID="{{ floating_ip_id }}"
+
+if [ "$STATE" = "MASTER" ]; then
+    MY_PORT=$(openstack port list --server "$(hostname)" -f value -c ID | head -1)
+    openstack floating ip set --port "$MY_PORT" "$FLOATING_IP_ID"
+fi

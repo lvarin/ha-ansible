@@ -1,0 +1,141 @@
+# HA Tutorial — Ansible Playbooks
+
+Ansible automation for the [CSC Pouta High Availability tutorial](https://docs.csc.fi/cloud/pouta/tutorials/high-availability/).
+
+Sets up a five-VM stack on cPouta:
+
+| VM | Role |
+|----|------|
+| HAProxy-1 | Primary load balancer, jump host, floating-IP holder |
+| HAProxy-2 | Backup load balancer (Keepalived VRRP failover) |
+| Frontend-1 | Flask application node |
+| Frontend-2 | Flask application node |
+| Monitoring | Prometheus + Grafana |
+
+---
+
+## Prerequisites
+
+- Ansible ≥ 2.14 on your local machine
+- OpenStack credentials sourced (`source <project>-openrc.sh`)
+- An SSH key pair registered in Pouta, with the private key available locally
+- Python `openstackclient` available locally (for ad-hoc queries)
+
+Install the required Ansible collection:
+
+```bash
+ansible-galaxy collection install -r requirements.yml
+```
+
+---
+
+## Step 1 — Configure variables
+
+Edit `group_vars/all.yml` and replace every `REPLACE_WITH_*` placeholder:
+
+| Variable | Description |
+|----------|-------------|
+| `project_cidr` | Your Pouta project network CIDR (e.g. `192.168.1.0/24`) |
+| `keepalived_auth_pass` | Shared VRRP password (choose any strong password) |
+| `os_project_id` / `os_project_name` | Your OpenStack project |
+| `os_username` / `os_password` | OpenStack credentials for the failover script |
+| `db_host` / `db_password` | Pukki DBaaS connection details |
+| `floating_ip_id` | UUID of the floating IP (see Step 2) |
+
+---
+
+## Step 2 — Provision infrastructure
+
+```bash
+ansible-playbook create_infra.yml
+```
+
+The playbook prompts for:
+- **SSH key pair name** — as registered in the Pouta dashboard
+- **Project network name** — your project's internal network
+
+When it finishes it prints a summary like:
+
+```
+inventory.ini
+  haproxy1  ansible_host=<FLOATING_IP>
+  haproxy2  ansible_host=<HAPROXY_2_PRIVATE_IP>
+  frontend1 ansible_host=<FRONTEND_1_PRIVATE_IP>
+  frontend2 ansible_host=<FRONTEND_2_PRIVATE_IP>
+  monitoring ansible_host=<MONITORING_PRIVATE_IP>
+
+group_vars/all.yml
+  frontend_1_ip: <FRONTEND_1_PRIVATE_IP>
+  frontend_2_ip: <FRONTEND_2_PRIVATE_IP>
+  floating_ip_id: (run: openstack floating ip list)
+```
+
+Copy these values into `inventory.ini` and `group_vars/all.yml`.
+
+Get the floating IP UUID:
+
+```bash
+openstack floating ip list
+```
+
+---
+
+## Step 3 — Fill in the inventory
+
+Edit `inventory.ini` and replace the `<...>` placeholders with the IPs from Step 2:
+
+```ini
+haproxy1   ansible_host=<FLOATING_IP>
+haproxy2   ansible_host=<HAPROXY_2_PRIVATE_IP>
+frontend1  ansible_host=<FRONTEND_1_PRIVATE_IP>
+frontend2  ansible_host=<FRONTEND_2_PRIVATE_IP>
+monitoring ansible_host=<MONITORING_PRIVATE_IP>
+```
+
+HAProxy-1 acts as the SSH jump host for all other VMs. The `ProxyJump` settings in `inventory.ini` handle this automatically.
+
+---
+
+## Step 4 — Configure the stack
+
+```bash
+ansible-playbook -i inventory.ini site.yml
+```
+
+This configures all five VMs in three plays:
+
+1. **HAProxy play** — installs HAProxy, Keepalived, and the OpenStack CLI; deploys the load-balancer config and the VRRP failover script.
+2. **Frontend play** — clones the [rahti-ha-tutorial](https://github.com/CSCfi/rahti-ha-tutorial) Flask app and runs it as a systemd service.
+3. **Monitoring play** — installs Prometheus and Grafana.
+
+---
+
+## Teardown
+
+To destroy all provisioned resources, set `state: absent` in `group_vars/all.yml` and re-run:
+
+```bash
+ansible-playbook -i inventory.ini create_infra.yml
+```
+
+---
+
+## File reference
+
+```
+.
+├── create_infra.yml       # Provision VMs, security groups, and floating IP
+├── site.yml               # Configure all VMs
+├── inventory.ini          # Host list and SSH settings
+├── requirements.yml       # Ansible collection dependencies
+├── group_vars/
+│   └── all.yml            # All variables (fill in REPLACE_WITH_* values)
+└── templates/
+    ├── haproxy.cfg.j2     # HAProxy load-balancer config
+    ├── keepalived.conf.j2 # VRRP config (master/backup priority)
+    ├── failover.sh.j2     # Keepalived notify script (reassigns floating IP)
+    ├── clouds.yaml.j2     # OpenStack credentials for the failover script
+    ├── ha-tutorial.env.j2 # Flask app environment variables
+    ├── ha-tutorial.service.j2  # systemd unit for the Flask app
+    └── prometheus.yml.j2  # Prometheus scrape config
+```

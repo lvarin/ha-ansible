@@ -1,0 +1,66 @@
+---
+# ============================================================
+# Infra provisioning vars (used by create_infra.yml)
+# ============================================================
+
+state: present
+os_image: Ubuntu-22.04
+flavor: standard.tiny
+
+# Project's internal network CIDR — used for inter-VM security group rules
+project_cidr: "192.168.1.0/24"
+
+# Source IPs allowed to SSH into the jump host (HAProxy-1).
+# The defaults below are CSC network ranges (VPN + eduroam).
+# Add your own IP/range if connecting from outside CSC networks.
+internal_ips:
+  - 193.166.85.0/24
+  - 193.166.1.0/24
+  - 193.166.2.0/24
+  - 193.166.80.0/23
+
+# VM definitions — name maps to the OpenStack server name; security_group
+# must match one of the groups created in create_infra.yml.
+vms:
+  - { name: HAProxy-1,  security_group: sg-haproxy }
+  - { name: HAProxy-2,  security_group: sg-haproxy }
+  - { name: Frontend-1, security_group: sg-frontend }
+  - { name: Frontend-2, security_group: sg-frontend }
+  - { name: Monitoring, security_group: sg-monitoring }
+
+# ============================================================
+# Config vars (used by site.yml)
+# ============================================================
+
+# Internal IPs of the Frontend VMs — filled in automatically by
+# create_infra.yml output; update before running site.yml.
+frontend_1_ip: "10.0.0.XXX"
+frontend_2_ip: "10.0.0.XXX"
+
+# Floating IP UUID — get it with: openstack floating ip list
+floating_ip_id: "REPLACE_WITH_FLOATING_IP_ID"
+
+# Pukki DBaaS connection settings
+db_host: "REPLACE_WITH_PUKKI_DB_HOST"
+db_port: 5432
+db_user: "postgres"
+db_password: "REPLACE_WITH_DB_PASSWORD"
+db_name: "postgres"
+
+# Keepalived shared settings (state and priority are set per host in inventory.ini)
+keepalived_auth_pass: "REPLACE_WITH_VRRP_PASSWORD"
+keepalived_interface: "ens3"
+keepalived_virtual_router_id: 51
+
+# OpenStack application credentials for the Keepalived failover script.
+# Create them at: https://pouta.csc.fi/dashboard/identity/application_credentials/
+os_auth_url: "https://pouta.csc.fi:5001/v3"
+os_project_id: "REPLACE_WITH_PROJECT_ID"
+os_project_name: "REPLACE_WITH_PROJECT_NAME"
+os_user_domain_name: "Default"
+os_project_domain_id: "default"
+os_username: "REPLACE_WITH_USERNAME"
+os_password: "REPLACE_WITH_PASSWORD"
+os_region_name: "regionOne"
+os_interface: "public"
+os_identity_api_version: 3

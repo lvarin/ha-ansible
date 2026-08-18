@@ -1,0 +1,21 @@
+vrrp_script chk_haproxy {
+    script "systemctl is-active haproxy"
+    interval 2
+    weight -20
+}
+
+vrrp_instance VI_1 {
+    state {{ keepalived_state }}
+    interface {{ keepalived_interface }}
+    virtual_router_id {{ keepalived_virtual_router_id }}
+    priority {{ keepalived_priority }}
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass {{ keepalived_auth_pass }}
+    }
+    track_script {
+        chk_haproxy
+    }
+    notify /etc/keepalived/failover.sh
+}

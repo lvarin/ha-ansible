@@ -1,0 +1,236 @@
+---
+# Ansible playbook for the Pouta High Availability tutorial.
+# https://docs.csc.fi/cloud/pouta/tutorials/high-availability/
+#
+# Prerequisites:
+#   1. Fill in all REPLACE_WITH_* values in group_vars/all.yml
+#   2. Fill in all <...> placeholders in inventory.ini
+#   3. Ensure your SSH key gives access to HAProxy-1 (the jump host)
+#
+# Usage:
+#   ansible-playbook -i inventory.ini site.yml
+
+# ---------------------------------------------------------------------------
+# Play 1: HAProxy load balancers
+# ---------------------------------------------------------------------------
+- name: Configure HAProxy load balancers
+  hosts: haproxy
+  become: true
+
+  handlers:
+    - name: Restart HAProxy
+      ansible.builtin.systemd:
+        name: haproxy
+        state: restarted
+
+    - name: Restart Keepalived
+      ansible.builtin.systemd:
+        name: keepalived
+        state: restarted
+
+  tasks:
+    - name: Install HAProxy, Keepalived, and OpenStack CLI
+      ansible.builtin.apt:
+        name:
+          - haproxy
+          - keepalived
+          - python3-openstackclient
+        state: present
+        update_cache: true
+
+    - name: Deploy HAProxy configuration
+      ansible.builtin.template:
+        src: templates/haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart HAProxy
+
+    - name: Ensure OpenStack config directory exists
+      ansible.builtin.file:
+        path: /etc/openstack
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Deploy OpenStack credentials for failover script
+      ansible.builtin.template:
+        src: templates/clouds.yaml.j2
+        dest: /etc/openstack/clouds.yaml
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Deploy Keepalived failover script
+      ansible.builtin.template:
+        src: templates/failover.sh.j2
+        dest: /etc/keepalived/failover.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Deploy Keepalived configuration
+      ansible.builtin.template:
+        src: templates/keepalived.conf.j2
+        dest: /etc/keepalived/keepalived.conf
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Keepalived
+
+    - name: Enable and start HAProxy
+      ansible.builtin.systemd:
+        name: haproxy
+        enabled: true
+        state: started
+
+    - name: Enable and start Keepalived
+      ansible.builtin.systemd:
+        name: keepalived
+        enabled: true
+        state: started
+
+# ---------------------------------------------------------------------------
+# Play 2: Frontend VMs
+# ---------------------------------------------------------------------------
+- name: Configure Frontend VMs
+  hosts: frontend
+  become: true
+
+  handlers:
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart ha-tutorial
+      ansible.builtin.systemd:
+        name: ha-tutorial
+        state: restarted
+
+  tasks:
+    - name: Install system dependencies
+      ansible.builtin.apt:
+        name:
+          - git
+          - python3
+          - python3-pip
+          - netcat-openbsd
+        state: present
+        update_cache: true
+
+    - name: Clone the HA tutorial application
+      ansible.builtin.git:
+        repo: https://github.com/CSCfi/rahti-ha-tutorial
+        dest: /opt/rahti-ha-tutorial
+        version: main
+        force: false
+
+    - name: Install Python application dependencies
+      ansible.builtin.pip:
+        requirements: /opt/rahti-ha-tutorial/requirements.txt
+        executable: pip3
+
+    - name: Deploy application environment file
+      ansible.builtin.template:
+        src: templates/ha-tutorial.env.j2
+        dest: /opt/rahti-ha-tutorial/.env
+        owner: ubuntu
+        group: ubuntu
+        mode: "0600"
+      notify: Restart ha-tutorial
+
+    - name: Deploy systemd service unit
+      ansible.builtin.template:
+        src: templates/ha-tutorial.service.j2
+        dest: /etc/systemd/system/ha-tutorial.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd daemon
+        - Restart ha-tutorial
+
+    - name: Enable and start ha-tutorial service
+      ansible.builtin.systemd:
+        name: ha-tutorial
+        enabled: true
+        state: started
+        daemon_reload: true
+
+# ---------------------------------------------------------------------------
+# Play 3: Monitoring VM (Prometheus + Grafana)
+# ---------------------------------------------------------------------------
+- name: Configure Monitoring VM
+  hosts: monitoring
+  become: true
+
+  handlers:
+    - name: Restart Prometheus
+      ansible.builtin.systemd:
+        name: prometheus
+        state: restarted
+
+  tasks:
+    - name: Install Prometheus and prerequisites for Grafana repo
+      ansible.builtin.apt:
+        name:
+          - prometheus
+          - apt-transport-https
+          - software-properties-common
+          - gnupg
+        state: present
+        update_cache: true
+
+    - name: Ensure /etc/apt/keyrings directory exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Download Grafana GPG key
+      ansible.builtin.get_url:
+        url: https://packages.grafana.com/gpg.key
+        dest: /tmp/grafana.asc
+        mode: "0644"
+
+    - name: Dearmor and install Grafana GPG key
+      ansible.builtin.shell:
+        cmd: gpg --dearmor < /tmp/grafana.asc > /etc/apt/keyrings/grafana.gpg
+        creates: /etc/apt/keyrings/grafana.gpg
+
+    - name: Add Grafana apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://packages.grafana.com/oss/deb stable main"
+        filename: grafana
+        state: present
+
+    - name: Install Grafana
+      ansible.builtin.apt:
+        name: grafana
+        state: present
+        update_cache: true
+
+    - name: Deploy Prometheus configuration
+      ansible.builtin.template:
+        src: templates/prometheus.yml.j2
+        dest: /etc/prometheus/prometheus.yml
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart Prometheus
+
+    - name: Enable and start Prometheus
+      ansible.builtin.systemd:
+        name: prometheus
+        enabled: true
+        state: started
+
+    - name: Enable and start Grafana
+      ansible.builtin.systemd:
+        name: grafana-server
+        enabled: true
+        state: started

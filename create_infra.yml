@@ -1,0 +1,202 @@
+---
+# Provision the 5 Pouta VMs for the HA tutorial.
+# Run this BEFORE site.yml. After it finishes, copy the printed IPs
+# into inventory.ini and group_vars/all.yml.
+#
+# Requirements:
+#   ansible-galaxy collection install -r requirements.yml
+#   OpenStack credentials loaded (e.g. source <project>-openrc.sh)
+#
+# Usage:
+#   ansible-playbook -i inventory.ini create_infra.yml
+
+- name: Create HA infrastructure on Pouta
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_prompt:
+    - name: key_name
+      prompt: "SSH key pair name (as registered in Pouta)"
+      private: false
+    - name: network
+      prompt: "Project network name"
+      private: false
+
+  tasks:
+
+    # ------------------------------------------------------------------
+    # Security group: HAProxy
+    # ------------------------------------------------------------------
+    - name: Create sg-haproxy security group
+      openstack.cloud.security_group:
+        state: "{{ state }}"
+        name: sg-haproxy
+        description: "HAProxy load balancers — HTTP and VRRP"
+
+    - name: sg-haproxy — allow SSH from CSC networks
+      openstack.cloud.security_group_rule:
+        state: "{{ state }}"
+        security_group: sg-haproxy
+        protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+        remote_ip_prefix: "{{ item }}"
+      loop: "{{ internal_ips }}"
+
+    - name: sg-haproxy — allow HTTP (80) from anywhere
+      openstack.cloud.security_group_rule:
+        state: "{{ state }}"
+        security_group: sg-haproxy
+        protocol: tcp
+        port_range_min: 80
+        port_range_max: 80
+        remote_ip_prefix: "0.0.0.0/0"
+
+    - name: sg-haproxy — allow VRRP (protocol 112) from project network
+      openstack.cloud.security_group_rule:
+        state: "{{ state }}"
+        security_group: sg-haproxy
+        protocol: "112"
+        remote_ip_prefix: "{{ project_cidr }}"
+        direction: ingress
+
+    # ------------------------------------------------------------------
+    # Security group: Frontend
+    # ------------------------------------------------------------------
+    - name: Create sg-frontend security group
+      openstack.cloud.security_group:
+        state: "{{ state }}"
+        name: sg-frontend
+        description: "Frontend VMs — Flask app port"
+
+    - name: sg-frontend — allow SSH from project network (via jump host)
+      openstack.cloud.security_group_rule:
+        state: "{{ state }}"
+        security_group: sg-frontend
+        protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+        remote_ip_prefix: "{{ project_cidr }}"
+
+    - name: sg-frontend — allow Flask app (5000) from project network
+      openstack.cloud.security_group_rule:
+        state: "{{ state }}"
+        security_group: sg-frontend
+        protocol: tcp
+        port_range_min: 5000
+        port_range_max: 5000
+        remote_ip_prefix: "{{ project_cidr }}"
+
+    # ------------------------------------------------------------------
+    # Security group: Monitoring
+    # ------------------------------------------------------------------
+    - name: Create sg-monitoring security group
+      openstack.cloud.security_group:
+        state: "{{ state }}"
+        name: sg-monitoring
+        description: "Monitoring VM — Prometheus and Grafana"
+
+    - name: sg-monitoring — allow SSH from project network (via jump host)
+      openstack.cloud.security_group_rule:
+        state: "{{ state }}"
+        security_group: sg-monitoring
+        protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+        remote_ip_prefix: "{{ project_cidr }}"
+
+    - name: sg-monitoring — allow Prometheus (9090) from project network
+      openstack.cloud.security_group_rule:
+        state: "{{ state }}"
+        security_group: sg-monitoring
+        protocol: tcp
+        port_range_min: 9090
+        port_range_max: 9090
+        remote_ip_prefix: "{{ project_cidr }}"
+
+    - name: sg-monitoring — allow Grafana (3000) from project network
+      openstack.cloud.security_group_rule:
+        state: "{{ state }}"
+        security_group: sg-monitoring
+        protocol: tcp
+        port_range_min: 3000
+        port_range_max: 3000
+        remote_ip_prefix: "{{ project_cidr }}"
+
+    # ------------------------------------------------------------------
+    # Virtual machines (all 5 created in parallel)
+    # ------------------------------------------------------------------
+    - name: Create VMs
+      openstack.cloud.server:
+        state: "{{ state }}"
+        name: "{{ item.name }}"
+        image: "{{ os_image }}"
+        flavor: "{{ flavor }}"
+        key_name: "{{ key_name }}"
+        network: "{{ network }}"
+        security_groups:
+          - "{{ item.security_group }}"
+        meta:
+          hostname: "{{ item.name }}"
+          group: "{{ item.name }}"
+      async: 300
+      poll: 0
+      register: servers
+      loop: "{{ vms }}"
+
+    - name: Wait for all VMs to be active
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: srv
+      until: srv.finished
+      retries: 60
+      delay: 5
+      loop: "{{ servers.results }}"
+
+    # ------------------------------------------------------------------
+    # Floating IP — assigned only to HAProxy-1
+    # ------------------------------------------------------------------
+    - name: Assign floating IP to HAProxy-1
+      openstack.cloud.floating_ip:
+        state: "{{ state }}"
+        server: HAProxy-1
+        network: public
+        reuse: true
+        wait: true
+        timeout: 60
+      register: haproxy1_fip
+
+    # ------------------------------------------------------------------
+    # Gather IPs and print summary
+    # ------------------------------------------------------------------
+    - name: Gather server info
+      openstack.cloud.server_info:
+        server: "{{ item }}"
+      register: server_facts
+      loop:
+        - HAProxy-1
+        - HAProxy-2
+        - Frontend-1
+        - Frontend-2
+        - Monitoring
+
+    - name: Print infrastructure summary
+      ansible.builtin.debug:
+        msg:
+          - "============================================================"
+          - "Infrastructure ready. Update the files below before running"
+          - "site.yml."
+          - "------------------------------------------------------------"
+          - "inventory.ini"
+          - "  haproxy1  ansible_host={{ haproxy1_fip.floating_ip.floating_ip_address }}"
+          - "  haproxy2  ansible_host={{ server_facts.results[1].servers[0].private_v4 }}"
+          - "  frontend1 ansible_host={{ server_facts.results[2].servers[0].private_v4 }}"
+          - "  frontend2 ansible_host={{ server_facts.results[3].servers[0].private_v4 }}"
+          - "  monitoring ansible_host={{ server_facts.results[4].servers[0].private_v4 }}"
+          - "------------------------------------------------------------"
+          - "group_vars/all.yml"
+          - "  frontend_1_ip: {{ server_facts.results[2].servers[0].private_v4 }}"
+          - "  frontend_2_ip: {{ server_facts.results[3].servers[0].private_v4 }}"
+          - "  floating_ip_id: (run: openstack floating ip list)"
+          - "============================================================"

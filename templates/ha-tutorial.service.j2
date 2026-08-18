@@ -1,0 +1,14 @@
+[Unit]
+Description=HA Tutorial Flask App
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/opt/rahti-ha-tutorial
+EnvironmentFile=/opt/rahti-ha-tutorial/.env
+ExecStart=/usr/bin/python3 app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
