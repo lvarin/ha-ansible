@@ -6,7 +6,7 @@ After=network.target
 User=ubuntu
 WorkingDirectory=/opt/rahti-ha-tutorial
 EnvironmentFile=/opt/rahti-ha-tutorial/.env
-ExecStart=/usr/bin/python3 app.py
+ExecStart=/opt/rahti-ha-tutorial/venv/bin/python3 app.py
 Restart=always
 RestartSec=5
 

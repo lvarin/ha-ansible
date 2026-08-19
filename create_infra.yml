@@ -26,15 +26,64 @@
   tasks:
 
     # ------------------------------------------------------------------
+    # Teardown: release FIP and delete VMs before touching security groups
+    # (OpenStack rejects SG deletion while VMs still reference them)
+    # ------------------------------------------------------------------
+    - name: Teardown resources before removing security groups
+      when: state == 'absent'
+      block:
+        - name: Get HAProxy-1 info to find its floating IP
+          openstack.cloud.server_info:
+            server: HAProxy-1
+          register: haproxy1_info
+
+        - name: Release floating IP from HAProxy-1
+          openstack.cloud.floating_ip:
+            state: absent
+            server: HAProxy-1
+            network: public
+            floating_ip_address: >-
+              {{ haproxy1_info.servers[0].addresses[network]
+                 | selectattr('OS-EXT-IPS:type', 'equalto', 'floating')
+                 | map(attribute='addr') | first }}
+            purge: true
+            wait: true
+            timeout: 60
+          when:
+            - haproxy1_info.servers | length > 0
+            - haproxy1_info.servers[0].addresses[network]
+              | selectattr('OS-EXT-IPS:type', 'equalto', 'floating')
+              | list | length > 0
+
+        - name: Delete VMs
+          openstack.cloud.server:
+            state: absent
+            name: "{{ item.name }}"
+          async: 300
+          poll: 0
+          register: servers_delete
+          loop: "{{ vms }}"
+
+        - name: Wait for all VMs to be deleted
+          async_status:
+            jid: "{{ item.ansible_job_id }}"
+          register: srv_del
+          until: srv_del.finished
+          retries: 60
+          delay: 5
+          loop: "{{ servers_delete.results }}"
+
+    # ------------------------------------------------------------------
     # Security group: HAProxy
     # ------------------------------------------------------------------
     - name: Create sg-haproxy security group
       openstack.cloud.security_group:
         state: "{{ state }}"
         name: sg-haproxy
-        description: "HAProxy load balancers — HTTP and VRRP"
+        description: "HAProxy load balancers, HTTP and VRRP"
 
-    - name: sg-haproxy — allow SSH from CSC networks
+    - name: sg-haproxy, allow SSH from CSC networks
+      when: state == 'present'
       openstack.cloud.security_group_rule:
         state: "{{ state }}"
         security_group: sg-haproxy
@@ -44,7 +93,18 @@
         remote_ip_prefix: "{{ item }}"
       loop: "{{ internal_ips }}"
 
-    - name: sg-haproxy — allow HTTP (80) from anywhere
+    - name: sg-haproxy, allow SSH from project network (haproxy2 via jump host)
+      when: state == 'present'
+      openstack.cloud.security_group_rule:
+        state: "{{ state }}"
+        security_group: sg-haproxy
+        protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+        remote_ip_prefix: "{{ project_cidr }}"
+
+    - name: sg-haproxy, allow HTTP (80) from anywhere
+      when: state == 'present'
       openstack.cloud.security_group_rule:
         state: "{{ state }}"
         security_group: sg-haproxy
@@ -53,7 +113,8 @@
         port_range_max: 80
         remote_ip_prefix: "0.0.0.0/0"
 
-    - name: sg-haproxy — allow VRRP (protocol 112) from project network
+    - name: sg-haproxy, allow VRRP (protocol 112) from project network
+      when: state == 'present'
       openstack.cloud.security_group_rule:
         state: "{{ state }}"
         security_group: sg-haproxy
@@ -68,9 +129,10 @@
       openstack.cloud.security_group:
         state: "{{ state }}"
         name: sg-frontend
-        description: "Frontend VMs — Flask app port"
+        description: "Frontend VMs, Flask app port"
 
-    - name: sg-frontend — allow SSH from project network (via jump host)
+    - name: sg-frontend, allow SSH from project network (via jump host)
+      when: state == 'present'
       openstack.cloud.security_group_rule:
         state: "{{ state }}"
         security_group: sg-frontend
@@ -79,7 +141,8 @@
         port_range_max: 22
         remote_ip_prefix: "{{ project_cidr }}"
 
-    - name: sg-frontend — allow Flask app (5000) from project network
+    - name: sg-frontend, allow Flask app (5000) from project network
+      when: state == 'present'
       openstack.cloud.security_group_rule:
         state: "{{ state }}"
         security_group: sg-frontend
@@ -95,9 +158,10 @@
       openstack.cloud.security_group:
         state: "{{ state }}"
         name: sg-monitoring
-        description: "Monitoring VM — Prometheus and Grafana"
+        description: "Monitoring VM, Prometheus and Grafana"
 
-    - name: sg-monitoring — allow SSH from project network (via jump host)
+    - name: sg-monitoring, allow SSH from project network (via jump host)
+      when: state == 'present'
       openstack.cloud.security_group_rule:
         state: "{{ state }}"
         security_group: sg-monitoring
@@ -106,7 +170,8 @@
         port_range_max: 22
         remote_ip_prefix: "{{ project_cidr }}"
 
-    - name: sg-monitoring — allow Prometheus (9090) from project network
+    - name: sg-monitoring, allow Prometheus (9090) from project network
+      when: state == 'present'
       openstack.cloud.security_group_rule:
         state: "{{ state }}"
         security_group: sg-monitoring
@@ -115,7 +180,8 @@
         port_range_max: 9090
         remote_ip_prefix: "{{ project_cidr }}"
 
-    - name: sg-monitoring — allow Grafana (3000) from project network
+    - name: sg-monitoring, allow Grafana (3000) from project network
+      when: state == 'present'
       openstack.cloud.security_group_rule:
         state: "{{ state }}"
         security_group: sg-monitoring
@@ -128,6 +194,7 @@
     # Virtual machines (all 5 created in parallel)
     # ------------------------------------------------------------------
     - name: Create VMs
+      when: state == 'present'
       openstack.cloud.server:
         state: "{{ state }}"
         name: "{{ item.name }}"
@@ -135,6 +202,7 @@
         flavor: "{{ flavor }}"
         key_name: "{{ key_name }}"
         network: "{{ network }}"
+        auto_ip: false
         security_groups:
           - "{{ item.security_group }}"
         meta:
@@ -146,6 +214,7 @@
       loop: "{{ vms }}"
 
     - name: Wait for all VMs to be active
+      when: state == 'present'
       async_status:
         jid: "{{ item.ansible_job_id }}"
       register: srv
@@ -155,9 +224,10 @@
       loop: "{{ servers.results }}"
 
     # ------------------------------------------------------------------
-    # Floating IP — assigned only to HAProxy-1
+    # Floating IP, assigned only to HAProxy-1
     # ------------------------------------------------------------------
     - name: Assign floating IP to HAProxy-1
+      when: state == 'present'
       openstack.cloud.floating_ip:
         state: "{{ state }}"
         server: HAProxy-1
@@ -171,6 +241,7 @@
     # Gather IPs and print summary
     # ------------------------------------------------------------------
     - name: Gather server info
+      when: state == 'present'
       openstack.cloud.server_info:
         server: "{{ item }}"
       register: server_facts
@@ -181,22 +252,67 @@
         - Frontend-2
         - Monitoring
 
+    - name: Collect internal IPs
+      when: state == 'present'
+      ansible.builtin.set_fact:
+        haproxy1_fip_ip: "{{ haproxy1_fip.floating_ip.floating_ip_address }}"
+        haproxy2_ip: "{{ server_facts.results[1].servers[0].addresses[network] | selectattr('OS-EXT-IPS:type', 'equalto', 'fixed') | map(attribute='addr') | first }}"
+        frontend1_ip: "{{ server_facts.results[2].servers[0].addresses[network] | selectattr('OS-EXT-IPS:type', 'equalto', 'fixed') | map(attribute='addr') | first }}"
+        frontend2_ip: "{{ server_facts.results[3].servers[0].addresses[network] | selectattr('OS-EXT-IPS:type', 'equalto', 'fixed') | map(attribute='addr') | first }}"
+        monitoring_ip: "{{ server_facts.results[4].servers[0].addresses[network] | selectattr('OS-EXT-IPS:type', 'equalto', 'fixed') | map(attribute='addr') | first }}"
+
+    - name: Write inventory.ini
+      when: state == 'present'
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/inventory.ini"
+        content: |
+          [haproxy_master]
+          haproxy1 ansible_host={{ haproxy1_fip_ip }} ansible_user=ubuntu keepalived_state=MASTER keepalived_priority=100
+
+          [haproxy_backup]
+          haproxy2 ansible_host={{ haproxy2_ip }} ansible_user=ubuntu keepalived_state=BACKUP keepalived_priority=90
+
+          [haproxy:children]
+          haproxy_master
+          haproxy_backup
+
+          [frontend]
+          frontend1 ansible_host={{ frontend1_ip }} ansible_user=ubuntu
+          frontend2 ansible_host={{ frontend2_ip }} ansible_user=ubuntu
+
+          [monitoring]
+          monitoring ansible_host={{ monitoring_ip }} ansible_user=ubuntu
+
+          [haproxy_master:vars]
+          ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+
+          [haproxy_backup:vars]
+          ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyJump=ubuntu@{{ haproxy1_fip_ip }}'
+
+          [frontend:vars]
+          ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyJump=ubuntu@{{ haproxy1_fip_ip }}'
+
+          [monitoring:vars]
+          ansible_ssh_common_args='-o StrictHostKeyChecking=no -o ProxyJump=ubuntu@{{ haproxy1_fip_ip }}'
+
+    - name: Update frontend_1_ip in group_vars/all.yml
+      when: state == 'present'
+      ansible.builtin.replace:
+        path: "{{ playbook_dir }}/group_vars/all.yml"
+        regexp: '^frontend_1_ip:.*$'
+        replace: 'frontend_1_ip: "{{ frontend1_ip }}"'
+
+    - name: Update frontend_2_ip in group_vars/all.yml
+      when: state == 'present'
+      ansible.builtin.replace:
+        path: "{{ playbook_dir }}/group_vars/all.yml"
+        regexp: '^frontend_2_ip:.*$'
+        replace: 'frontend_2_ip: "{{ frontend2_ip }}"'
+
     - name: Print infrastructure summary
+      when: state == 'present'
       ansible.builtin.debug:
         msg:
-          - "============================================================"
-          - "Infrastructure ready. Update the files below before running"
-          - "site.yml."
-          - "------------------------------------------------------------"
-          - "inventory.ini"
-          - "  haproxy1  ansible_host={{ haproxy1_fip.floating_ip.floating_ip_address }}"
-          - "  haproxy2  ansible_host={{ server_facts.results[1].servers[0].private_v4 }}"
-          - "  frontend1 ansible_host={{ server_facts.results[2].servers[0].private_v4 }}"
-          - "  frontend2 ansible_host={{ server_facts.results[3].servers[0].private_v4 }}"
-          - "  monitoring ansible_host={{ server_facts.results[4].servers[0].private_v4 }}"
-          - "------------------------------------------------------------"
-          - "group_vars/all.yml"
-          - "  frontend_1_ip: {{ server_facts.results[2].servers[0].private_v4 }}"
-          - "  frontend_2_ip: {{ server_facts.results[3].servers[0].private_v4 }}"
-          - "  floating_ip_id: (run: openstack floating ip list)"
-          - "============================================================"
+          - "inventory.ini written, group_vars/all.yml updated."
+          - "One remaining manual step: set floating_ip_id in group_vars/all.yml"
+          - "  Run: openstack floating ip list"
