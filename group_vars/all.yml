@@ -44,9 +44,9 @@ floating_ip_id: "REPLACE_FLOATING_IP_ID"
 # Pukki DBaaS connection settings
 db_host: "REPLACE_DB_HOST"
 db_port: 5432
-db_user: "postgres"
+db_user: "ha"
 db_password: "REPLACE_PASS"
-db_name: "postgres"
+db_name: "ha"
 
 # Keepalived shared settings (state and priority are set per host in inventory.ini)
 keepalived_auth_pass: "REPLACE_KEEPALICE_PASS"
