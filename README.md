@@ -84,20 +84,6 @@ Edit `group_vars/all.yml` and replace every `REPLACE_WITH_*` placeholder:
 |----------|-------------|
 | `floating_ip_id` | UUID of the floating IP (see Step 2) |
 
----
-
-## Fill in the inventory
-
-Edit `inventory.ini` and replace the `<...>` placeholders with the IPs from Step 2:
-
-```ini
-haproxy1   ansible_host=<FLOATING_IP>
-haproxy2   ansible_host=<HAPROXY_2_PRIVATE_IP>
-frontend1  ansible_host=<FRONTEND_1_PRIVATE_IP>
-frontend2  ansible_host=<FRONTEND_2_PRIVATE_IP>
-monitoring ansible_host=<MONITORING_PRIVATE_IP>
-```
-
 HAProxy-1 acts as the SSH jump host for all other VMs. The `ProxyJump` settings in `inventory.ini` handle this automatically.
 
 ---
