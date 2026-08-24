@@ -56,12 +56,9 @@ keepalived_virtual_router_id: 51
 # OpenStack application credentials for the Keepalived failover script.
 # Create them at: https://pouta.csc.fi/dashboard/identity/application_credentials/
 os_auth_url: "https://pouta.csc.fi:5001/v3"
-os_project_id: "REPLACE_PROJECT_ID"
-os_project_name: "REPLACE_PROJECT_NAME"
-os_user_domain_name: "Default"
-os_project_domain_id: "default"
-os_username: "REPLACE_WITH_USERNAME"
-os_password: "REPLACE_WITH_PASSWORD"
+os_application_credential_id: ""
+os_application_credential_secret: ""
 os_region_name: "regionOne"
 os_interface: "public"
 os_identity_api_version: 3
+os_auth_type: "v3applicationcredential"
