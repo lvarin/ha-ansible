@@ -38,11 +38,25 @@ Edit `group_vars/all.yml` and replace every `REPLACE_WITH_*` placeholder:
 |----------|-------------|
 | `project_cidr` | Your Pouta project network CIDR (e.g. `192.168.1.0/24`) |
 | `keepalived_auth_pass` | Shared VRRP password (choose any strong password) |
-| `os_project_id` / `os_project_name` | Your OpenStack project |
-| `os_username` / `os_password` | OpenStack credentials for the failover script |
+| `os_application_credential_id` / `os_application_credential_secret` | OpenStack application credentials for the failover script |
 | `db_host` / `db_password` | Pukki DBaaS connection details |
 
 **Note**: The floating ip id will be replaced in step 2.
+
+### Local variables
+
+Copy `local.yml.example` to `local.yml` and fill in your personal values:
+
+```bash
+cp local.yml.example local.yml
+```
+
+| Variable | Description |
+|----------|-------------|
+| `key_name` | SSH key pair name as registered in the Pouta dashboard |
+| `network` | Your project's internal network name |
+
+`local.yml` is gitignored and never committed — each user keeps their own copy.
 
 ---
 
@@ -52,11 +66,7 @@ Edit `group_vars/all.yml` and replace every `REPLACE_WITH_*` placeholder:
 ansible-playbook create_infra.yml
 ```
 
-The playbook prompts for:
-- **SSH key pair name**, as registered in the Pouta dashboard
-- **Project network name**, your project's internal network
-
-When it finishes it prints a summary like:
+It reads `key_name` and `network` from `local.yml` (see above). When it finishes it prints a summary like:
 
 ```
 inventory.ini
@@ -118,10 +128,11 @@ ansible-playbook -i inventory.ini create_infra.yml
 .
 ├── create_infra.yml       # Provision VMs, security groups, and floating IP
 ├── site.yml               # Configure all VMs
-├── inventory.ini          # Host list and SSH settings
+├── inventory.ini          # Host list and SSH settings (auto-generated)
 ├── requirements.yml       # Ansible collection dependencies
+├── local.yml.example      # Template for personal variables (copy to local.yml)
 ├── group_vars/
-│   └── all.yml            # All variables (fill in REPLACE_WITH_* values)
+│   └── all.yml            # Shared variables (fill in REPLACE_* values)
 └── templates/
     ├── haproxy.cfg.j2     # HAProxy load-balancer config
     ├── keepalived.conf.j2 # VRRP config (master/backup priority)
