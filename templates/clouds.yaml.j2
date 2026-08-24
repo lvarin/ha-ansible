@@ -2,12 +2,12 @@ clouds:
   openstack:
     auth:
       auth_url: {{ os_auth_url }}
-      project_id: {{ os_project_id }}
-      project_name: "{{ os_project_name }}"
-      user_domain_name: "{{ os_user_domain_name }}"
-      project_domain_id: "{{ os_project_domain_id }}"
-      username: "{{ os_username }}"
-      password: "{{ os_password }}"
-    region_name: "{{ os_region_name }}"
+
+      application_credential_id: {{ os_application_credential_id }}
+      application_credential_secret: {{ os_application_credential_secret }}
+
+    regions:
+    - "{{ os_region_name }}"
     interface: "{{ os_interface }}"
     identity_api_version: {{ os_identity_api_version }}
+    auth_type: {{{ os_auth_type }}
