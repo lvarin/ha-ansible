@@ -15,13 +15,8 @@
   connection: local
   gather_facts: false
 
-  vars_prompt:
-    - name: key_name
-      prompt: "SSH key pair name (as registered in Pouta)"
-      private: false
-    - name: network
-      prompt: "Project network name"
-      private: false
+  vars_files:
+    - local.yml
 
   tasks:
 

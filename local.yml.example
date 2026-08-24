@@ -1,0 +1,8 @@
+# Copy this file to local.yml and fill in your values.
+# local.yml is gitignored — never committed.
+
+# SSH key pair name as registered in Pouta (Identity → Key Pairs)
+key_name: "REPLACE_YOUR_KEY"
+
+# Your project's network name (Network → Networks)
+network: "REPLACE_YOUR_NETWORK"
