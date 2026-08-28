@@ -5,20 +5,20 @@
 # Prerequisites:
 #   1. Fill in all REPLACE_WITH_* values in group_vars/all.yml
 #   2. Fill in all <...> placeholders in inventory.ini
-#   3. Ensure your SSH key gives access to HAProxy-1 (the jump host)
+#   3. Ensure your SSH key gives access to haproxy-1 (the jump host)
 #
 # Usage:
 #   ansible-playbook -i inventory.ini site.yml
 
 # ---------------------------------------------------------------------------
-# Play 1: HAProxy load balancers
+# Play 1: haproxy load balancers
 # ---------------------------------------------------------------------------
-- name: Configure HAProxy load balancers
+- name: Configure haproxy load balancers
   hosts: haproxy
   become: true
 
   handlers:
-    - name: Restart HAProxy
+    - name: Restart haproxy
       ansible.builtin.systemd:
         name: haproxy
         state: restarted
@@ -29,7 +29,7 @@
         state: restarted
 
   tasks:
-    - name: Install HAProxy, Keepalived, and OpenStack CLI
+    - name: Install haproxy, Keepalived, and OpenStack CLI
       ansible.builtin.apt:
         name:
           - haproxy
@@ -38,14 +38,14 @@
         state: present
         update_cache: true
 
-    - name: Deploy HAProxy configuration
+    - name: Deploy haproxy configuration
       ansible.builtin.template:
         src: templates/haproxy.cfg.j2
         dest: /etc/haproxy/haproxy.cfg
         owner: root
         group: root
         mode: "0644"
-      notify: Restart HAProxy
+      notify: Restart haproxy
 
     - name: Ensure OpenStack config directory exists
       ansible.builtin.file:
@@ -80,7 +80,7 @@
         mode: "0644"
       notify: Restart Keepalived
 
-    - name: Enable and start HAProxy
+    - name: Enable and start haproxy
       ansible.builtin.systemd:
         name: haproxy
         enabled: true
@@ -104,9 +104,9 @@
       ansible.builtin.systemd:
         daemon_reload: true
 
-    - name: Restart ha-tutorial
+    - name: Restart rahti-ha-tutorial
       ansible.builtin.systemd:
-        name: ha-tutorial
+        name: rahti-ha-tutorial
         state: restarted
 
   tasks:
@@ -142,7 +142,7 @@
         owner: ubuntu
         group: ubuntu
         mode: "0600"
-      notify: Restart ha-tutorial
+      notify: Restart rahti-ha-tutorial
 
     - name: Install Python requirements (psycopg2-binary provided by system package)
       ansible.builtin.shell:
@@ -153,26 +153,26 @@
 
     - name: Deploy systemd service unit
       ansible.builtin.template:
-        src: templates/ha-tutorial.service.j2
-        dest: /etc/systemd/system/ha-tutorial.service
+        src: templates/rahti-ha-tutorial.service.j2
+        dest: /etc/systemd/system/rahti-ha-tutorial.service
         owner: root
         group: root
         mode: "0644"
       notify:
         - Reload systemd daemon
-        - Restart ha-tutorial
+        - Restart rahti-ha-tutorial
 
-    - name: Enable and start ha-tutorial service
+    - name: Enable and start rahti-ha-tutorial.service
       ansible.builtin.systemd:
-        name: ha-tutorial
+        name: rahti-ha-tutorial
         enabled: true
         state: started
         daemon_reload: true
 
 # ---------------------------------------------------------------------------
-# Play 3: Monitoring VM (Prometheus + Grafana)
+# Play 3: monitoring VM (Prometheus + Grafana)
 # ---------------------------------------------------------------------------
-- name: Configure Monitoring VM
+- name: Configure monitoring VM
   hosts: monitoring
   become: true
 

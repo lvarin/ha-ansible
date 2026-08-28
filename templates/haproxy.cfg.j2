@@ -20,3 +20,8 @@ backend http_back
     option httpchk GET /
     server frontend1 {{ frontend_1_ip }}:5000 check
     server frontend2 {{ frontend_2_ip }}:5000 check
+
+backend grafana_back
+    balance roundrobin
+    option httpchk GET /api/health
+    server grafana1 {{ monitoring_ip }}:3000 check

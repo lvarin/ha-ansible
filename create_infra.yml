@@ -27,15 +27,15 @@
     - name: Teardown resources before removing security groups
       when: state == 'absent'
       block:
-        - name: Get HAProxy-1 info to find its floating IP
+        - name: Get haproxy-1 info to find its floating IP
           openstack.cloud.server_info:
-            server: HAProxy-1
+            server: haproxy-1
           register: haproxy1_info
 
-        - name: Release floating IP from HAProxy-1
+        - name: Release floating IP from haproxy-1
           openstack.cloud.floating_ip:
             state: absent
-            server: HAProxy-1
+            server: haproxy-1
             network: public
             floating_ip_address: >-
               {{ haproxy1_info.servers[0].addresses[network]
@@ -69,13 +69,13 @@
           loop: "{{ servers_delete.results }}"
 
     # ------------------------------------------------------------------
-    # Security group: HAProxy
+    # Security group: haproxy
     # ------------------------------------------------------------------
     - name: Create sg-haproxy security group
       openstack.cloud.security_group:
         state: "{{ state }}"
         name: sg-haproxy
-        description: "HAProxy load balancers, HTTP and VRRP"
+        description: "haproxy load balancers, HTTP and VRRP"
 
     - name: sg-haproxy, allow SSH from CSC networks
       when: state == 'present'
@@ -147,13 +147,13 @@
         remote_ip_prefix: "{{ project_cidr }}"
 
     # ------------------------------------------------------------------
-    # Security group: Monitoring
+    # Security group: monitoring
     # ------------------------------------------------------------------
     - name: Create sg-monitoring security group
       openstack.cloud.security_group:
         state: "{{ state }}"
         name: sg-monitoring
-        description: "Monitoring VM, Prometheus and Grafana"
+        description: "monitoring VM, Prometheus and Grafana"
 
     - name: sg-monitoring, allow SSH from project network (via jump host)
       when: state == 'present'
@@ -219,13 +219,13 @@
       loop: "{{ servers.results }}"
 
     # ------------------------------------------------------------------
-    # Floating IP, assigned only to HAProxy-1
+    # Floating IP, assigned only to haproxy-1
     # ------------------------------------------------------------------
-    - name: Assign floating IP to HAProxy-1
+    - name: Assign floating IP to haproxy-1
       when: state == 'present'
       openstack.cloud.floating_ip:
         state: "{{ state }}"
-        server: HAProxy-1
+        server: haproxy-1
         network: public
         reuse: true
         wait: true
@@ -241,11 +241,11 @@
         server: "{{ item }}"
       register: server_facts
       loop:
-        - HAProxy-1
-        - HAProxy-2
-        - Frontend-1
-        - Frontend-2
-        - Monitoring
+        - haproxy-1
+        - haproxy-2
+        - frontend-1
+        - frontend-2
+        - monitoring
 
     - name: Collect internal IPs
       when: state == 'present'

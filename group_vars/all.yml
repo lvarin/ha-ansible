@@ -10,7 +10,7 @@ flavor: standard.tiny
 # Project's internal network CIDR, used for inter-VM security group rules
 project_cidr: "192.168.1.0/24"
 
-# Source IPs allowed to SSH into the jump host (HAProxy-1).
+# Source IPs allowed to SSH into the jump host (haproxy-1).
 # The defaults below are CSC network ranges (VPN + eduroam).
 # Add your own IP/range if connecting from outside CSC networks.
 internal_ips:
@@ -24,11 +24,11 @@ internal_ips:
 # VM definitions, name maps to the OpenStack server name; security_group
 # must match one of the groups created in create_infra.yml.
 vms:
-  - { name: HAProxy-1,  security_group: sg-haproxy }
-  - { name: HAProxy-2,  security_group: sg-haproxy }
-  - { name: Frontend-1, security_group: sg-frontend }
-  - { name: Frontend-2, security_group: sg-frontend }
-  - { name: Monitoring, security_group: sg-monitoring }
+  - { name: haproxy-1,  security_group: sg-haproxy }
+  - { name: haproxy-2,  security_group: sg-haproxy }
+  - { name: frontend-1, security_group: sg-frontend }
+  - { name: frontend-2, security_group: sg-frontend }
+  - { name: monitoring, security_group: sg-monitoring }
 
 # ============================================================
 # Config vars (used by site.yml)
@@ -37,27 +37,28 @@ vms:
 # Internal IPs of the Frontend VMs, derived from ansible_host in the inventory.
 frontend_1_ip: "{{ hostvars['frontend1']['ansible_host'] }}"
 frontend_2_ip: "{{ hostvars['frontend2']['ansible_host'] }}"
+monitoring_ip: "{{ hostvars['monitoring']['ansible_host'] }}"
 
 # Floating IP UUID get it with: openstack floating ip list
 floating_ip_id: "REPLACE_FLOATING_IP_ID"
 
 # Pukki DBaaS connection settings
-db_host: "REPLACE_DB_HOST"
+db_host: "128.214.254.171"
 db_port: 5432
 db_user: "ha"
-db_password: "REPLACE_PASS"
+db_password: "5X7JXILBW01KVICHUCE49RAF4LRK9K2C65TDAB3G8RAFZ"
 db_name: "ha"
 
 # Keepalived shared settings (state and priority are set per host in inventory.ini)
-keepalived_auth_pass: "REPLACE_KEEPALICE_PASS"
+keepalived_auth_pass: "BA96W5C7VQBZYNR2MB58MJ9Z39OC4X5WNEGTAFL1HWPD0"
 keepalived_interface: "ens3"
 keepalived_virtual_router_id: 51
 
 # OpenStack application credentials for the Keepalived failover script.
 # Create them at: https://pouta.csc.fi/dashboard/identity/application_credentials/
 os_auth_url: "https://pouta.csc.fi:5001/v3"
-os_application_credential_id: ""
-os_application_credential_secret: ""
+os_application_credential_id: "b2f62c593d0f49d1bb113cba99ebab54"
+os_application_credential_secret: "aqnX0ZeUUl2kNF-mDyLFHwKSApIeN_7CRu0cLfUbeqHbhfn1549_fc2DBuPvOFsgfSmSoRTwyUPghajSPPkSUg"
 os_region_name: "regionOne"
 os_interface: "public"
 os_identity_api_version: 3

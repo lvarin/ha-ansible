@@ -6,11 +6,11 @@ Sets up a five-VM stack on cPouta:
 
 | VM | Role |
 |----|------|
-| HAProxy-1 | Primary load balancer, jump host, floating-IP holder |
-| HAProxy-2 | Backup load balancer (Keepalived VRRP failover) |
-| Frontend-1 | Flask application node |
-| Frontend-2 | Flask application node |
-| Monitoring | Prometheus + Grafana |
+| haproxy-1 | Primary load balancer, jump host, floating-IP holder |
+| haproxy-2 | Backup load balancer (Keepalived VRRP failover) |
+| frontend-1 | Flask application node |
+| frontend-2 | Flask application node |
+| monitoring | Prometheus + Grafana |
 
 ---
 
@@ -94,7 +94,7 @@ Edit `group_vars/all.yml` and replace every `REPLACE_WITH_*` placeholder:
 |----------|-------------|
 | `floating_ip_id` | UUID of the floating IP (see Step 2) |
 
-HAProxy-1 acts as the SSH jump host for all other VMs. The `ProxyJump` settings in `inventory.ini` handle this automatically.
+haproxy-1 acts as the SSH jump host for all other VMs. The `ProxyJump` settings in `inventory.ini` handle this automatically.
 
 ---
 
@@ -106,9 +106,9 @@ ansible-playbook -i inventory.ini site.yml
 
 This configures all five VMs in three plays:
 
-1. **HAProxy play**, installs HAProxy, Keepalived, and the OpenStack CLI; deploys the load-balancer config and the VRRP failover script.
+1. **haproxy play**, installs haproxy, Keepalived, and the OpenStack CLI; deploys the load-balancer config and the VRRP failover script.
 2. **Frontend play**, clones the [rahti-ha-tutorial](https://github.com/CSCfi/rahti-ha-tutorial) Flask app and runs it as a systemd service.
-3. **Monitoring play**, installs Prometheus and Grafana.
+3. **monitoring play**, installs Prometheus and Grafana.
 
 ---
 
@@ -134,11 +134,11 @@ ansible-playbook -i inventory.ini create_infra.yml
 ├── group_vars/
 │   └── all.yml            # Shared variables (fill in REPLACE_* values)
 └── templates/
-    ├── haproxy.cfg.j2     # HAProxy load-balancer config
+    ├── haproxy.cfg.j2     # haproxy load-balancer config
     ├── keepalived.conf.j2 # VRRP config (master/backup priority)
     ├── failover.sh.j2     # Keepalived notify script (reassigns floating IP)
     ├── clouds.yaml.j2     # OpenStack credentials for the failover script
     ├── ha-tutorial.env.j2 # Flask app environment variables
-    ├── ha-tutorial.service.j2  # systemd unit for the Flask app
+    ├── rahti-ha-tutorial.service.j2  # systemd unit for the Flask app
     └── prometheus.yml.j2  # Prometheus scrape config
 ```
